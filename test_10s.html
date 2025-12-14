@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>YouTube Player Logger</title>
+<script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+<h2>YouTube Video Logger</h2>
+
+<div id="player"></div>
+<button onclick="downloadLogs()">Download Logs</button>
+
+<script>
+let player;
+let logs = [];
+let lastPlaybackTime = 0;
+let stallStartTime = null;
+let totalStalls = 0;
+let totalStallDuration = 0;
+
+// ---------- 初始化播放器 ----------
+function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+        height: '240',
+        width: '400',
+        videoId: 'aqz-KE-bpKQ',  // ← 在这里换成你要测试的视频 ID
+        playerVars: { 
+            'playsinline': 1,
+            'autoplay': 1,      // 自动播放
+            'loop': 1,          // 循环播放
+            'playlist': 'aqz-KE-bpKQ'  // 循环播放需要设置playlist
+        },
+        events: {
+            'onStateChange': onStateChange,
+            'onPlaybackQualityChange': onQualityChange,
+            'onReady': onPlayerReady
+        }
+    });
+}
+
+// ---------- 播放器就绪事件 ----------
+function onPlayerReady(event) {
+    event.target.playVideo();  // 确保自动播放
+    startAutoDownload();       // 启动自动下载
+}
+
+// ---------- 状态变化事件 ----------
+function onStateChange(event) {
+    const stateMap = {
+        "-1": "unstarted",
+        "0": "ended",
+        "1": "playing",
+        "2": "paused",
+        "3": "buffering",
+        "5": "video cued"
+    };
+
+    const now = Date.now();
+    
+    // 检测stall开始
+    if (event.data === 3 && stallStartTime === null) {
+        stallStartTime = now;
+        totalStalls++;
+    }
+    
+    // 检测stall结束
+    if (event.data === 1 && stallStartTime !== null) {
+        const stallDuration = now - stallStartTime;
+        totalStallDuration += stallDuration;
+        
+        logs.push({
+            timestamp: now,
+            type: "stall",
+            stallDuration: stallDuration,
+            totalStalls: totalStalls,
+            totalStallDuration: totalStallDuration,
+            timeSec: player.getCurrentTime()
+        });
+        
+        stallStartTime = null;
+    }
+
+    logs.push({
+        timestamp: now,
+        type: "state_change",
+        state: stateMap[event.data],
+        stateCode: event.data,
+        timeSec: player.getCurrentTime(),
+        duration: player.getDuration(),
+        loadedFraction: player.getVideoLoadedFraction(),
+        quality: player.getPlaybackQuality(),
+        availableQualityLevels: player.getAvailableQualityLevels(),
+        bytesLoaded: player.getVideoBytesLoaded(),
+        bytesTotal: player.getVideoBytesTotal(),
+        isStalling: stallStartTime !== null,
+        totalStalls: totalStalls,
+        totalStallDuration: totalStallDuration
+    });
+}
+
+// ---------- 码率 / 分辨率变化 ----------
+function onQualityChange(event) {
+    logs.push({
+        timestamp: Date.now(),
+        type: "quality_change",
+        quality: event.data,
+        timeSec: player.getCurrentTime(),
+        availableQualityLevels: player.getAvailableQualityLevels(),
+        loadedFraction: player.getVideoLoadedFraction(),
+        rate: player.getPlaybackRate()
+    });
+}
+
+// ---------- 每500ms自动记录播放信息 ----------
+setInterval(() => {
+    if (!player || typeof player.getCurrentTime !== "function") return;
+
+    const currentTime = player.getCurrentTime();
+    const playerState = player.getPlayerState();
+    
+    // 检测播放是否卡住（应该在播放但时间没前进）
+    const isPlaybackStalled = (playerState === 1 && currentTime === lastPlaybackTime && currentTime > 0);
+    
+    logs.push({
+        timestamp: Date.now(),
+        type: "periodic",
+        timeSec: currentTime,
+        duration: player.getDuration(),
+        loadedFraction: player.getVideoLoadedFraction(),
+        quality: player.getPlaybackQuality(),
+        availableQualityLevels: player.getAvailableQualityLevels(),
+        playerState: playerState,
+        bytesLoaded: player.getVideoBytesLoaded(),
+        bytesTotal: player.getVideoBytesTotal(),
+        bufferHealth: player.getVideoLoadedFraction() - (player.getCurrentTime() / player.getDuration()),
+        isStalling: stallStartTime !== null,
+        isPlaybackStalled: isPlaybackStalled,
+        totalStalls: totalStalls,
+        totalStallDuration: totalStallDuration,
+        currentStallDuration: stallStartTime ? (Date.now() - stallStartTime) : 0
+    });
+    
+    lastPlaybackTime = currentTime;
+}, 500);
+
+// ---------- 下载日志 ----------
+function downloadLogs() {
+    const timestamp = Date.now();
+    const blob = new Blob([JSON.stringify(logs, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `youtube_logs_${timestamp}.json`;
+    a.click();
+    
+    console.log(`日志已下载: youtube_logs_${timestamp}.json`);
+}
+
+// ---------- 自动下载日志（每5分钟） ----------
+function startAutoDownload() {
+    // 每5分钟（300000毫秒）自动下载一次
+    setInterval(() => {
+        downloadLogs();
+    }, 10000);  // 5分钟 = 300000毫秒
+    
+    console.log('自动下载已启动，每5分钟保存一次日志');
+}
+
+</script>
+</body>
+</html>

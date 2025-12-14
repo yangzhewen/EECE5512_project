@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>YouTube Player Logger</title>
+<script src="https://www.youtube.com/iframe_api"></script>
+<style>
+    body {
+        margin: 0;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+    }
+    #player {
+        width: 90vw;
+        height: 50.625vw; /* 16:9 aspect ratio */
+        max-width: 1920px;
+        max-height: 1080px;
+    }
+    button {
+        margin-top: 20px;
+        padding: 10px 20px;
+        font-size: 16px;
+    }
+</style>
+</head>
+<body>
+<h2>YouTube Video Logger</h2>
+
+<div id="player"></div>
+<button onclick="downloadLogs()">Download Logs</button>
+
+<script>
+let player;
+let logs = [];
+let lastPlaybackTime = 0;
+let stallStartTime = null;
+let totalStalls = 0;
+let totalStallDuration = 0;
+
+// ---------- Initialize Player ----------
+function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+        height: '2160',
+        width: '3840',
+        videoId: 'aqz-KE-bpKQ',  // Replace with your video ID
+        playerVars: { 
+            'playsinline': 1,
+            'autoplay': 1,      // Autoplay
+            'loop': 1,          // Loop playback
+            'playlist': 'aqz-KE-bpKQ'  // Playlist needed for loop
+        },
+        events: {
+            'onStateChange': onStateChange,
+            'onPlaybackQualityChange': onQualityChange,
+            'onReady': onPlayerReady
+        }
+    });
+}
+
+// ---------- Player Ready Event ----------
+function onPlayerReady(event) {
+    event.target.playVideo();  // Ensure autoplay
+    startAutoDownload();       // Start auto download
+}
+
+// ---------- State Change Event ----------
+function onStateChange(event) {
+    const stateMap = {
+        "-1": "unstarted",
+        "0": "ended",
+        "1": "playing",
+        "2": "paused",
+        "3": "buffering",
+        "5": "video cued"
+    };
+
+    const now = Date.now();
+    
+    // Detect stall start
+    if (event.data === 3 && stallStartTime === null) {
+        stallStartTime = now;
+        totalStalls++;
+    }
+    
+    // Detect stall end
+    if (event.data === 1 && stallStartTime !== null) {
+        const stallDuration = now - stallStartTime;
+        totalStallDuration += stallDuration;
+        
+        logs.push({
+            timestamp: now,
+            type: "stall",
+            stallDuration: stallDuration,
+            totalStalls: totalStalls,
+            totalStallDuration: totalStallDuration,
+            timeSec: player.getCurrentTime()
+        });
+        
+        stallStartTime = null;
+    }
+
+    logs.push({
+        timestamp: now,
+        type: "state_change",
+        state: stateMap[event.data],
+        stateCode: event.data,
+        timeSec: player.getCurrentTime(),
+        duration: player.getDuration(),
+        loadedFraction: player.getVideoLoadedFraction(),
+        quality: player.getPlaybackQuality(),
+        availableQualityLevels: player.getAvailableQualityLevels(),
+        bytesLoaded: player.getVideoBytesLoaded(),
+        bytesTotal: player.getVideoBytesTotal(),
+        isStalling: stallStartTime !== null,
+        totalStalls: totalStalls,
+        totalStallDuration: totalStallDuration
+    });
+}
+
+// ---------- Quality / Resolution Change ----------
+function onQualityChange(event) {
+    logs.push({
+        timestamp: Date.now(),
+        type: "quality_change",
+        quality: event.data,
+        timeSec: player.getCurrentTime(),
+        availableQualityLevels: player.getAvailableQualityLevels(),
+        loadedFraction: player.getVideoLoadedFraction(),
+        rate: player.getPlaybackRate()
+    });
+}
+
+// ---------- Auto record playback info every 500ms ----------
+setInterval(() => {
+    if (!player || typeof player.getCurrentTime !== "function") return;
+
+    const currentTime = player.getCurrentTime();
+    const playerState = player.getPlayerState();
+    
+    // Detect if playback is stalled (should be playing but time not advancing)
+    const isPlaybackStalled = (playerState === 1 && currentTime === lastPlaybackTime && currentTime > 0);
+    
+    logs.push({
+        timestamp: Date.now(),
+        type: "periodic",
+        timeSec: currentTime,
+        duration: player.getDuration(),
+        loadedFraction: player.getVideoLoadedFraction(),
+        quality: player.getPlaybackQuality(),
+        availableQualityLevels: player.getAvailableQualityLevels(),
+        playerState: playerState,
+        bytesLoaded: player.getVideoBytesLoaded(),
+        bytesTotal: player.getVideoBytesTotal(),
+        bufferHealth: player.getVideoLoadedFraction() - (player.getCurrentTime() / player.getDuration()),
+        isStalling: stallStartTime !== null,
+        isPlaybackStalled: isPlaybackStalled,
+        totalStalls: totalStalls,
+        totalStallDuration: totalStallDuration,
+        currentStallDuration: stallStartTime ? (Date.now() - stallStartTime) : 0
+    });
+    
+    lastPlaybackTime = currentTime;
+}, 500);
+
+// ---------- 下载日志 ----------
+function downloadLogs() {
+    const timestamp = Date.now();
+    const blob = new Blob([JSON.stringify(logs, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `youtube_logs_${timestamp}.json`;
+    a.click();
+    
+    console.log(`日志已下载: youtube_logs_${timestamp}.json`);
+}
+
+// ---------- Auto Download Logs (every 5 minutes) ----------
+function startAutoDownload() {
+    // Auto download every 5 minutes (300000 milliseconds)
+    setInterval(() => {
+        downloadLogs();
+    }, 300000);  // 5 minutes = 300000 milliseconds
+    
+    console.log('Auto download started, saving logs every 5 minutes');
+}
+
+</script>
+</body>
+</html>

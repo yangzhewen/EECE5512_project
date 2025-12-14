@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+measurements/
+*.json
+
+# Android
+android_app/.gradle/
+android_app/.idea/
+android_app/local.properties
+android_app/build/
+android_app/app/build/
+android_app/*.iml
+android_app/.DS_Store
+android_app/captures/
+android_app/.externalNativeBuild/
+android_app/.cxx/
+
+# Video files
+videos/*.mp4
+videos/*.mkv
+videos/*.webm
+videos/*.avi
+
+# Test outputs
+*.apk
+*.keystore
